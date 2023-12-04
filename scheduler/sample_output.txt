@@ -1,8 +1,12 @@
+-----------------------------------
 [phadjido@falcon project2_scheduler]$ ls
 scheduler  work
+-----------------------------------
 [phadjido@falcon project2_scheduler]$ cd work/
+-----------------------------------
 [phadjido@falcon work]$ ls
 Makefile  work.c  work_io.c
+-----------------------------------
 [phadjido@falcon work]$ make
 gcc -O0 -Wall -DLOAD=1 -DDELAY=750 -o work1 work.c
 gcc -O0 -Wall -DLOAD=2 -DDELAY=750 -o work2 work.c
@@ -12,16 +16,22 @@ gcc -O0 -Wall -DLOAD=5 -DDELAY=750 -o work5 work.c
 gcc -O0 -Wall -DLOAD=6 -DDELAY=750 -o work6 work.c
 gcc -O0 -Wall -DLOAD=7 -DDELAY=750 -o work7 work.c
 gcc -O0 -Wall -DLOAD=5 -DDELAY=750 -o work5x2_io work_io.c
+-----------------------------------
 [phadjido@falcon work]$ ls
 Makefile  work1  work2  work3  work4  work5  work5x2_io  work6  work7  work.c  work_io.c
+-----------------------------------
 [phadjido@falcon work]$ cd ../scheduler/
+-----------------------------------
 [phadjido@falcon scheduler]$ ls
 homogeneous.txt  Makefile  mixed.txt  reverse.txt  run.sh  sample_output.txt  scheduler.c  scheduler_io.c
+-----------------------------------
 [phadjido@falcon scheduler]$ make
 gcc -Wall  -lm  scheduler.c   -o scheduler
 gcc -Wall  -lm  scheduler_io.c   -o scheduler_io
+-----------------------------------
 [phadjido@falcon scheduler]$ ls
 homogeneous.txt  Makefile  mixed.txt  reverse.txt  run.sh  sample_output.txt  scheduler  scheduler.c  scheduler_io  scheduler_io.c
+-----------------------------------
 [phadjido@falcon scheduler]$ ./scheduler FCFS reverse.txt 
 executing ../work/work7
 process 643255 begins
