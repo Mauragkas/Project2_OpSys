@@ -9,10 +9,10 @@
 #define MAX_LENGTH 50
 
 typedef enum { 
-	NEW, 
-	RUNNING,
-	STOPPED, 
-	EXITED 
+    NEW, 
+    RUNNING,
+    STOPPED, 
+    EXITED 
 } AppState;
 
 typedef struct app {
@@ -24,8 +24,11 @@ typedef struct app {
     struct app *prev;
 } App;
 
+// Global head pointer for accessing the list in the signal handler
+App *head = NULL;
+
 // Reads the applications from the file and stores them in the list
-void readAppsFromFile(App **head, char *filename) {
+void readAppsFromFile(char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         perror("Error opening file");
@@ -50,7 +53,7 @@ void readAppsFromFile(App **head, char *filename) {
         if (last != NULL) {
             last->next = newApp;
         } else {
-            *head = newApp;
+            head = newApp;
         }
         last = newApp;
     }
@@ -58,17 +61,23 @@ void readAppsFromFile(App **head, char *filename) {
     fclose(file);
 }
 
-// Χειριστής για το σήμα SIGCHLD
+// Signal handler for SIGCHLD
 void sigchldHandler(int sig) {
     int status;
     pid_t pid;
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        // Ενημέρωση της κατάστασης της διεργασίας
-        // Εκτύπωση του συνολικού χρόνου εκτέλεσης
+        App *current = head;
+        while (current != NULL) {
+            if (current->pid == pid) {
+                current->state = EXITED;
+                break;
+            }
+            current = current->next;
+        }
     }
 }
 
-// Εκκίνηση μιας εφαρμογής
+// Start an application
 void startApp(App *app) {
     pid_t pid = fork();
     if (pid == 0) { // child
@@ -84,7 +93,7 @@ void startApp(App *app) {
     }
 }
 
-// Implementation of the FCFS 
+// Implementation of the FCFS scheduling
 void scheduleFCFS(App *head) {
     App *current = head;
     while (current != NULL) {
@@ -95,44 +104,71 @@ void scheduleFCFS(App *head) {
     }
 }
 
-// Implementation of the RR
-void scheduleRR(App *head, int quantum) {
+// Implementation of the RR scheduling
+void scheduleRR(App *head, int quantum) { // HELP ITS NOT EXITING AND ITS 4:00 AM
     struct timespec ts;
     ts.tv_sec = quantum / 1000;
     ts.tv_nsec = (quantum % 1000) * 1000000L;
 
-    App *current = head;
-    while (current != NULL) {
-        if (current->state != RUNNING) {
-            startApp(current);
+    while (1) {
+        int allExited = 1;
+        App *current = head;
+
+        while (current != NULL) {
+            if (current->state == NEW) {
+                startApp(current);
+            }
+
+            if (current->state == RUNNING) {
+                nanosleep(&ts, NULL);
+                kill(current->pid, SIGSTOP);
+                current->state = STOPPED;
+            } else if (current->state == STOPPED) {
+                kill(current->pid, SIGCONT);
+                current->state = RUNNING;
+            }
+
+            if (current->state != EXITED) {
+                allExited = 0;
+            }
+
+            current = current->next;
         }
 
-        nanosleep(&ts, NULL);
-
-        kill(current->pid, SIGSTOP);
-        current->state = STOPPED;
-        current = current->next;
+        if (allExited) {
+            break; // All processes have exited
+        }
     }
 }
 
 int main(int argc, char *argv[]) {
-    App *head = NULL;
     char *policy;
     int quantum = 0;
 
+    // Check for minimum number of arguments
     if (argc < 3) {
-        printf("Usage: %s <policy> <input_filename> [<quantum>]\n", argv[0]);
+        printf("Usage: %s <policy> [<quantum>] <input_filename>\n", argv[0]);
         return 1;
     }
 
     policy = argv[1];
-    readAppsFromFile(&head, argv[2]);
 
-    if (strcmp(policy, "RR") == 0 && argc == 4) {
-        quantum = atoi(argv[3]);
+    // Check if the policy is RR and handle the quantum argument
+    if (strcmp(policy, "RR") == 0) {
+        if (argc < 4) {
+            printf("Usage for RR: %s RR <quantum> <input_filename>\n", argv[0]);
+            return 1;
+        }
+        quantum = atoi(argv[2]);
+        readAppsFromFile(argv[3]);
+    } else {
+        readAppsFromFile(argv[2]);
     }
 
-    signal(SIGCHLD, sigchldHandler);
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = &sigchldHandler;
+    sigaction(SIGCHLD, &sa, NULL);
 
     if (strcmp(policy, "FCFS") == 0) {
         scheduleFCFS(head);
