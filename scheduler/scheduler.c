@@ -61,22 +61,6 @@ void readAppsFromFile(char *filename) {
     fclose(file);
 }
 
-// Signal handler for SIGCHLD
-void sigchldHandler(int sig) {
-    int status;
-    pid_t pid;
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        App *current = head;
-        while (current != NULL) {
-            if (current->pid == pid) {
-                current->state = EXITED;
-                break;
-            }
-            current = current->next;
-        }
-    }
-}
-
 // Start an application
 void startApp(App *app) {
     pid_t pid = fork();
@@ -104,40 +88,71 @@ void scheduleFCFS(App *head) {
     }
 }
 
-// Implementation of the RR scheduling
-void scheduleRR(App *head, int quantum) { // HELP ITS NOT EXITING AND ITS 4:00 AM
+// Signal handler for SIGCHLD
+void sigchldHandler(int sig) {
+    pid_t pid;
+    int status;
+
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        App *current = head;
+        while (current != NULL) {
+            if (current->pid == pid) {
+                current->state = EXITED;
+                break;
+            }
+            current = current->next;
+        }
+    }
+}
+
+// Updated checkAllExited function
+int checkAllExited(App *head) {
+    App *current = head;
+    int allExited = 1; // Assume all processes have exited
+
+    while (current != NULL) {
+        if (current->state != EXITED) {
+            allExited = 0; // Found a process that has not exited
+            break;
+        }
+        current = current->next;
+    }
+    
+    return allExited; // Return the result
+}
+
+// Modified scheduleRR function
+void scheduleRR(App *head, int quantum) {
     struct timespec ts;
     ts.tv_sec = quantum / 1000;
     ts.tv_nsec = (quantum % 1000) * 1000000L;
 
-    while (1) {
-        int allExited = 1;
-        App *current = head;
+    App *current = head;
+    int allExited = 0; // Initialize to 0
 
-        while (current != NULL) {
-            if (current->state == NEW) {
-                startApp(current);
-            }
-
-            if (current->state == RUNNING) {
-                nanosleep(&ts, NULL);
-                kill(current->pid, SIGSTOP);
-                current->state = STOPPED;
-            } else if (current->state == STOPPED) {
-                kill(current->pid, SIGCONT);
-                current->state = RUNNING;
-            }
-
-            if (current->state != EXITED) {
-                allExited = 0;
-            }
-
-            current = current->next;
+    while (!allExited) { // Continue looping until all processes have exited
+        if (current == NULL) {
+            // Restart from the head if the end of the list is reached
+            current = head;
         }
 
-        if (allExited) {
-            break; // All processes have exited
+        if (current->state == NEW) {
+            startApp(current);
+            current->state = RUNNING;
         }
+
+        if (current->state == RUNNING) {
+            kill(current->pid, SIGCONT); // Continue the process if it was stopped
+            nanosleep(&ts, NULL);        // Run for the time quantum
+            kill(current->pid, SIGSTOP); // Stop the process
+            current->state = STOPPED;
+        }
+
+        // Move to the next process
+        current = current->next;
+
+        // Check if all apps have exited in each iteration
+        allExited = checkAllExited(head);
     }
 }
 
@@ -165,14 +180,10 @@ int main(int argc, char *argv[]) {
         readAppsFromFile(argv[2]);
     }
 
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = &sigchldHandler;
-    sigaction(SIGCHLD, &sa, NULL);
-
     if (strcmp(policy, "FCFS") == 0) {
         scheduleFCFS(head);
     } else if (strcmp(policy, "RR") == 0) {
+        signal(SIGCHLD, sigchldHandler);
         scheduleRR(head, quantum);
     } else {
         printf("Invalid scheduling policy.\n");

@@ -1,8 +1,9 @@
 .vscode/
-test.*
+test*
 test/
 scheduler
 scheduler_io
 work[1-7]
 work5x2_io
 homogeneous2.txt
+target/

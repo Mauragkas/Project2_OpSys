@@ -24,9 +24,15 @@ typedef struct app {
     int entryTime;
     struct app *next;
     struct app *prev;
+    int waitingForIO;
+    int completedIO;
 } App;
 
-void readAppsFromFile(App **head, char *filename) {
+// Global head pointer for accessing the list in the signal handler
+App *head = NULL;
+
+// Reads the applications from the file and stores them in the list
+void readAppsFromFile(char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         perror("Error opening file");
@@ -40,7 +46,6 @@ void readAppsFromFile(App **head, char *filename) {
         App *newApp = (App *)malloc(sizeof(App));
         if (newApp == NULL) {
             perror("Failed to allocate memory for new app");
-            fclose(file);
             exit(EXIT_FAILURE);
         }
         strncpy(newApp->name, appName, MAX_LENGTH);
@@ -52,7 +57,7 @@ void readAppsFromFile(App **head, char *filename) {
         if (last != NULL) {
             last->next = newApp;
         } else {
-            *head = newApp;
+            head = newApp;
         }
         last = newApp;
     }
@@ -60,39 +65,138 @@ void readAppsFromFile(App **head, char *filename) {
     fclose(file);
 }
 
+// Start an application
 void startApp(App *app) {
     pid_t pid = fork();
-    if (pid == 0) { // Child process
+    if (pid == 0) { // child
         execl(app->name, app->name, NULL);
         perror("Failed to start app");
         exit(EXIT_FAILURE);
-    } else if (pid > 0) { // Parent process
+    } else if (pid > 0) { // parent
         app->pid = pid;
         app->state = RUNNING;
     } else {
-        perror("Fork failed");
+        perror("fork failed");
         exit(EXIT_FAILURE);
     }
 }
 
+// Signal handler for SIGUSR1
+void sigusr1Handler(int sig) {
+    App *current = head;
+    while (current != NULL) {
+        if (current->state == RUNNING) {
+            current->waitingForIO = 1;
+            // Update any other relevant state or perform actions
+            break;
+        }
+        current = current->next;
+    }
+}
+
+// Signal handler for SIGUSR2
+void sigusr2Handler(int sig) {
+    App *current = head;
+    while (current != NULL) {
+        if (current->waitingForIO) {
+            current->completedIO = 1;
+            current->waitingForIO = 0;
+            // Update any other relevant state or perform actions
+            break;
+        }
+        current = current->next;
+    }
+}
+
+// Signal handler for SIGCHLD
 void sigchldHandler(int sig) {
-    // Implementation for SIGCHLD handler
+    int status;
+    pid_t pid;
+
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        App *current = head;
+        while (current != NULL) {
+            if (current->pid == pid) {
+                current->state = EXITED;
+                break;
+            }
+            current = current->next;
+        }
+    }
 }
 
-void sigusr1Handler(int sig, siginfo_t *si, void *unused) {
-    // Implementation for SIGUSR1 handler
-}
 
-void sigusr2Handler(int sig, siginfo_t *si, void *unused) {
-    // Implementation for SIGUSR2 handler
-}
-
+// Implementation of the FCFS scheduling
 void scheduleFCFS(App *head) {
-    // Implementation for FCFS scheduling
+    App *current = head;
+    while (current != NULL) {
+        if (current->state == NEW) {
+            startApp(current);
+        }
+
+        if (current->state == RUNNING || current->state == READY_TO_RUN) {
+            waitpid(current->pid, NULL, 0); // Wait for the application to finish or stop for I/O
+            if (current->waitingForIO) {
+                current->state = WAITING_FOR_IO;
+                // Wait for I/O to complete
+                while (!current->completedIO) {
+                    // Spin or sleep
+                }
+                current->state = READY_TO_RUN;
+            }
+        }
+
+        if (current->state == EXITED) {
+            current = current->next;
+        }
+    }
 }
 
+// Implementation of the RR scheduling
 void scheduleRR(App *head, int quantum) {
-    // Implementation for Round Robin scheduling
+    struct timespec ts;
+    ts.tv_sec = quantum / 1000;
+    ts.tv_nsec = (quantum % 1000) * 1000000L;
+
+    while (1) {
+        int allExited = 1;
+        App *current = head;
+
+        while (current != NULL) {
+            if (current->state == NEW) {
+                startApp(current);
+            }
+
+            if (current->state == RUNNING || current->state == READY_TO_RUN) {
+                nanosleep(&ts, NULL);
+                kill(current->pid, SIGSTOP);
+                current->state = STOPPED;
+            }
+
+            if (current->state == WAITING_FOR_IO && current->completedIO) {
+                current->state = READY_TO_RUN;
+                current->completedIO = 0;
+            } else if (current->state == STOPPED) {
+                kill(current->pid, SIGCONT);
+                current->state = RUNNING;
+            }
+
+            // Check if the process has exited
+            if (waitpid(current->pid, NULL, WNOHANG) > 0) {
+                current->state = EXITED;
+            }
+
+            if (current->state != EXITED) {
+                allExited = 0;
+            }
+
+            current = current->next;
+        }
+
+        if (allExited) {
+            break; // All processes have exited
+        }
+    }
 }
 
 void freeAppList(App *head) {
@@ -104,34 +208,49 @@ void freeAppList(App *head) {
 }
 
 int main(int argc, char *argv[]) {
-    App *head = NULL;
     char *policy;
     int quantum = 0;
 
+    struct sigaction sa;
+
+// Set up SIGUSR1 handler
+sa.sa_handler = &sigusr1Handler;
+sigemptyset(&sa.sa_mask);
+sa.sa_flags = 0;
+sigaction(SIGUSR1, &sa, NULL);
+
+// Set up SIGUSR2 handler
+sa.sa_handler = &sigusr2Handler;
+sigemptyset(&sa.sa_mask);
+sa.sa_flags = 0;
+sigaction(SIGUSR2, &sa, NULL);
+
+// Set up SIGCHLD handler
+sa.sa_handler = &sigchldHandler;
+sigemptyset(&sa.sa_mask);
+sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+sigaction(SIGCHLD, &sa, NULL);
+
+
+    // Check for minimum number of arguments
     if (argc < 3) {
-        printf("Usage: %s <policy> <input_filename> [<quantum>]\n", argv[0]);
+        printf("Usage: %s <policy> [<quantum>] <input_filename>\n", argv[0]);
         return 1;
     }
 
     policy = argv[1];
-    readAppsFromFile(&head, argv[2]);
 
-    if (strcmp(policy, "RR") == 0 && argc == 4) {
-        quantum = atoi(argv[3]);
+    // Check if the policy is RR and handle the quantum argument
+    if (strcmp(policy, "RR") == 0) {
+        if (argc < 4) {
+            printf("Usage for RR: %s RR <quantum> <input_filename>\n", argv[0]);
+            return 1;
+        }
+        quantum = atoi(argv[2]);
+        readAppsFromFile(argv[3]);
+    } else {
+        readAppsFromFile(argv[2]);
     }
-
-    struct sigaction sa1, sa2;
-    sa1.sa_flags = SA_SIGINFO;
-    sa1.sa_sigaction = sigusr1Handler;
-    sigemptyset(&sa1.sa_mask);
-    sigaction(SIGUSR1, &sa1, NULL);
-
-    sa2.sa_flags = SA_SIGINFO;
-    sa2.sa_sigaction = sigusr2Handler;
-    sigemptyset(&sa2.sa_mask);
-    sigaction(SIGUSR2, &sa2, NULL);
-
-    signal(SIGCHLD, sigchldHandler);
 
     if (strcmp(policy, "FCFS") == 0) {
         scheduleFCFS(head);
@@ -142,6 +261,12 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    freeAppList(head);
+    // Clear list and free memory
+    while (head != NULL) {
+        App *temp = head;
+        head = head->next;
+        free(temp);
+    }
+
     return 0;
 }
