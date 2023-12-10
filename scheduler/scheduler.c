@@ -61,6 +61,23 @@ void readAppsFromFile(char *filename) {
     fclose(file);
 }
 
+// Signal handler for SIGCHLD
+void sigchldHandler(int sig) {
+    int status;
+    pid_t pid;
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        App *current = head;
+        while (current != NULL) {
+            if (current->pid == pid) {
+                current->state = EXITED;
+                // printf("%d exited with state %d\n", current->pid, current->state);
+                break;
+            }
+            current = current->next;
+        }
+    }
+}
+
 // Start an application
 void startApp(App *app) {
     pid_t pid = fork();
@@ -88,71 +105,46 @@ void scheduleFCFS(App *head) {
     }
 }
 
-// Signal handler for SIGCHLD
-void sigchldHandler(int sig) {
-    pid_t pid;
-    int status;
-
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        App *current = head;
-        while (current != NULL) {
-            if (current->pid == pid) {
-                current->state = EXITED;
-                break;
-            }
-            current = current->next;
-        }
-    }
-}
-
-// Updated checkAllExited function
-int checkAllExited(App *head) {
+int isAllStopped(App *head) {
     App *current = head;
-    int allExited = 1; // Assume all processes have exited
-
     while (current != NULL) {
         if (current->state != EXITED) {
-            allExited = 0; // Found a process that has not exited
-            break;
+            return 0;
         }
         current = current->next;
     }
-    
-    return allExited; // Return the result
+    return 1;
 }
 
-// Modified scheduleRR function
-void scheduleRR(App *head, int quantum) {
+// Implementation of the RR scheduling
+void scheduleRR(App *head, int quantum) { // HELP ITS NOT EXITING AND ITS 4:00 AM
     struct timespec ts;
     ts.tv_sec = quantum / 1000;
     ts.tv_nsec = (quantum % 1000) * 1000000L;
 
-    App *current = head;
-    int allExited = 0; // Initialize to 0
+    while (1) {
+        App *current = head;
 
-    while (!allExited) { // Continue looping until all processes have exited
-        if (current == NULL) {
-            // Restart from the head if the end of the list is reached
-            current = head;
+        while (current != NULL) {
+            if (current->state == NEW) {
+                startApp(current);
+            }
+
+            if (current->state == RUNNING) {
+                nanosleep(&ts, NULL);
+                kill(current->pid, SIGSTOP);
+                current->state = STOPPED;
+            } else if (current->state == STOPPED) {
+                kill(current->pid, SIGCONT);
+                current->state = RUNNING;
+            }
+
+            current = current->next;
         }
 
-        if (current->state == NEW) {
-            startApp(current);
-            current->state = RUNNING;
+        if (isAllStopped(head)) {
+            break;
         }
-
-        if (current->state == RUNNING) {
-            kill(current->pid, SIGCONT); // Continue the process if it was stopped
-            nanosleep(&ts, NULL);        // Run for the time quantum
-            kill(current->pid, SIGSTOP); // Stop the process
-            current->state = STOPPED;
-        }
-
-        // Move to the next process
-        current = current->next;
-
-        // Check if all apps have exited in each iteration
-        allExited = checkAllExited(head);
     }
 }
 
