@@ -128,9 +128,7 @@ void scheduleRR(Process *head, int quantum) {
         while (current != NULL) {
             if (current->state == NEW) {
                 startProcess(current);
-            }
-
-            if (current->state == RUNNING) {
+            } else if (current->state == RUNNING) {
                 nanosleep(&ts, NULL);
                 if (current->state == EXITED) {
                     current = current->next;

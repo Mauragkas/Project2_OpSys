@@ -85,7 +85,7 @@ void startProcess(Process *app) {
 
 // Signal handler for SIGUSR1
 void sigusr1Handler(int sig) {
-    printf("Received SIGUSR1\n");
+    // printf("Received SIGUSR1\n");
     Process *current = head;
     while (current != NULL) {
         if (current->state == RUNNING) {
@@ -99,7 +99,7 @@ void sigusr1Handler(int sig) {
 
 // Signal handler for SIGUSR2
 void sigusr2Handler(int sig) {
-    printf("Received SIGUSR2\n");
+    // printf("Received SIGUSR2\n");s
     Process *current = head;
     while (current != NULL) {
         if (current->waitingForIO) {
@@ -114,7 +114,7 @@ void sigusr2Handler(int sig) {
 
 // Signal handler for SIGCHLD
 void sigchldHandler(int sig) {
-    printf("Received SIGCHLD\n");
+    // printf("Received SIGCHLD\n");
     int status;
     pid_t pid;
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
@@ -152,11 +152,11 @@ void scheduleFCFS(Process *head) {
             if (WIFEXITED(status)) {
                 // Process has exited
                 current->state = EXITED;
-                printf("Process %s exited\n", current->name);
+                // printf("Process %s exited\n", current->name);
             } else if (WIFSTOPPED(status)) {
                 // Process stopped for I/O
                 current->state = WAITING_FOR_IO;
-                printf("Process %s waiting for I/O\n", current->name);
+                // printf("Process %s waiting for I/O\n", current->name);
             } else if (WIFCONTINUED(status)) {
                 // Process continued after I/O completion
                 current->state = RUNNING;
@@ -198,9 +198,7 @@ void scheduleRR(Process *head, int quantum) {
         while (current != NULL) {
             if (current->state == NEW) {
                 startProcess(current);
-            }
-
-            if (current->state == RUNNING || current->state == READY_TO_RUN) {
+            } else if (current->state == RUNNING || current->state == READY_TO_RUN) {
                 nanosleep(&ts, NULL);
                 if (current->state == EXITED) {
                     current = current->next;
@@ -208,9 +206,7 @@ void scheduleRR(Process *head, int quantum) {
                 }
                 kill(current->pid, SIGSTOP);
                 current->state = STOPPED;
-            }
-
-            if (current->state == WAITING_FOR_IO && current->completedIO) {
+            } else if (current->state == WAITING_FOR_IO && current->completedIO) {
                 current->state = READY_TO_RUN;
                 current->completedIO = 0;
             } else if (current->state == STOPPED) {
