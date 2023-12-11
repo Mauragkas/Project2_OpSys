@@ -70,7 +70,7 @@ void sigchldHandler(int sig) {
         while (current != NULL) {
             if (current->pid == pid) {
                 current->state = EXITED;
-                printf("%d exited with state %d\n", current->pid, current->state);
+                // printf("%d exited with state %d\n", current->pid, current->state);
                 break;
             }
             current = current->next;
@@ -116,19 +116,8 @@ int isAllStopped(App *head) {
     return 1;
 }
 
-// function to print all the processes that are not stopped
-void printProcesses(App *head) {
-    App *current = head;
-    while (current != NULL) {
-        if (current->state != EXITED) {
-            printf("Not exited: %d\n", current->pid);
-        }
-        current = current->next;
-    }
-}
-
 // Implementation of the RR scheduling
-void scheduleRR(App *head, int quantum) { // HELP ITS NOT EXITING AND ITS 4:00 AM
+void scheduleRR(App *head, int quantum) {
     struct timespec ts;
     ts.tv_sec = quantum / 1000;
     ts.tv_nsec = (quantum % 1000) * 1000000L;
@@ -143,6 +132,10 @@ void scheduleRR(App *head, int quantum) { // HELP ITS NOT EXITING AND ITS 4:00 A
 
             if (current->state == RUNNING) {
                 nanosleep(&ts, NULL);
+                if (current->state == EXITED) {
+                    current = current->next;
+                    continue;
+                }
                 kill(current->pid, SIGSTOP);
                 current->state = STOPPED;
             } else if (current->state == STOPPED) {
@@ -152,8 +145,6 @@ void scheduleRR(App *head, int quantum) { // HELP ITS NOT EXITING AND ITS 4:00 A
 
             current = current->next;
         }
-
-        printProcesses(head);
 
         if (isAllStopped(head)) {
             break;
