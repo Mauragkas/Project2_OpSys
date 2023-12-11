@@ -70,7 +70,7 @@ void sigchldHandler(int sig) {
         while (current != NULL) {
             if (current->pid == pid) {
                 current->state = EXITED;
-                // printf("%d exited with state %d\n", current->pid, current->state);
+                printf("%d exited with state %d\n", current->pid, current->state);
                 break;
             }
             current = current->next;
