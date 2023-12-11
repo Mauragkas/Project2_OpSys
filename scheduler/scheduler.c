@@ -13,49 +13,49 @@ typedef enum {
     RUNNING,
     STOPPED, 
     EXITED 
-} AppState;
+} ProcessState;
 
-typedef struct app {
+typedef struct Process {
     char name[MAX_LENGTH];
     int pid;
-    AppState state;
+    ProcessState state;
     int entryTime;
-    struct app *next;
-    struct app *prev;
-} App;
+    struct Process *next;
+    struct Process *prev;
+} Process;
 
 // Global head pointer for accessing the list in the signal handler
-App *head = NULL;
+Process *head = NULL;
 
-// Reads the applications from the file and stores them in the list
-void readAppsFromFile(char *filename) {
+// Reads the Processlications from the file and stores them in the list
+void readProcessFromFile(char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         perror("Error opening file");
         exit(EXIT_FAILURE);
     }
 
-    char appName[MAX_LENGTH];
+    char ProcessName[MAX_LENGTH];
     int entryTime;
-    App *last = NULL;
-    while (fscanf(file, "%s %d", appName, &entryTime) != EOF) {
-        App *newApp = (App *)malloc(sizeof(App));
-        if (newApp == NULL) {
-            perror("Failed to allocate memory for new app");
+    Process *last = NULL;
+    while (fscanf(file, "%s %d", ProcessName, &entryTime) != EOF) {
+        Process *newProcess = (Process *)malloc(sizeof(Process));
+        if (newProcess == NULL) {
+            perror("Failed to allocate memory for new Process");
             exit(EXIT_FAILURE);
         }
-        strncpy(newApp->name, appName, MAX_LENGTH);
-        newApp->pid = -1;
-        newApp->state = NEW;
-        newApp->entryTime = entryTime;
-        newApp->next = NULL;
-        newApp->prev = last;
+        strncpy(newProcess->name, ProcessName, MAX_LENGTH);
+        newProcess->pid = -1;
+        newProcess->state = NEW;
+        newProcess->entryTime = entryTime;
+        newProcess->next = NULL;
+        newProcess->prev = last;
         if (last != NULL) {
-            last->next = newApp;
+            last->next = newProcess;
         } else {
-            head = newApp;
+            head = newProcess;
         }
-        last = newApp;
+        last = newProcess;
     }
 
     fclose(file);
@@ -66,7 +66,7 @@ void sigchldHandler(int sig) {
     int status;
     pid_t pid;
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        App *current = head;
+        Process *current = head;
         while (current != NULL) {
             if (current->pid == pid) {
                 current->state = EXITED;
@@ -78,16 +78,16 @@ void sigchldHandler(int sig) {
     }
 }
 
-// Start an application
-void startApp(App *app) {
+// Start an Processlication
+void startProcess(Process *Process) {
     pid_t pid = fork();
     if (pid == 0) { // child
-        execl(app->name, app->name, NULL);
-        perror("Failed to start app");
+        execl(Process->name, Process->name, NULL);
+        perror("Failed to start Process");
         exit(EXIT_FAILURE);
     } else if (pid > 0) { // parent
-        app->pid = pid;
-        app->state = RUNNING;
+        Process->pid = pid;
+        Process->state = RUNNING;
     } else {
         perror("fork failed");
         exit(EXIT_FAILURE);
@@ -95,18 +95,18 @@ void startApp(App *app) {
 }
 
 // Implementation of the FCFS scheduling
-void scheduleFCFS(App *head) {
-    App *current = head;
+void scheduleFCFS(Process *head) {
+    Process *current = head;
     while (current != NULL) {
-        startApp(current);
-        waitpid(current->pid, NULL, 0); // Wait for the application to finish
+        startProcess(current);
+        waitpid(current->pid, NULL, 0); // Wait for the Processlication to finish
         current->state = EXITED;
         current = current->next;
     }
 }
 
-int isAllStopped(App *head) {
-    App *current = head;
+int isAllStopped(Process *head) {
+    Process *current = head;
     while (current != NULL) {
         if (current->state != EXITED) {
             return 0;
@@ -117,17 +117,17 @@ int isAllStopped(App *head) {
 }
 
 // Implementation of the RR scheduling
-void scheduleRR(App *head, int quantum) {
+void scheduleRR(Process *head, int quantum) {
     struct timespec ts;
     ts.tv_sec = quantum / 1000;
     ts.tv_nsec = (quantum % 1000) * 1000000L;
 
     while (1) {
-        App *current = head;
+        Process *current = head;
 
         while (current != NULL) {
             if (current->state == NEW) {
-                startApp(current);
+                startProcess(current);
             }
 
             if (current->state == RUNNING) {
@@ -171,9 +171,9 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         quantum = atoi(argv[2]);
-        readAppsFromFile(argv[3]);
+        readProcessFromFile(argv[3]);
     } else {
-        readAppsFromFile(argv[2]);
+        readProcessFromFile(argv[2]);
     }
 
     if (strcmp(policy, "FCFS") == 0) {
@@ -188,7 +188,7 @@ int main(int argc, char *argv[]) {
 
     // Clear list and free memory
     while (head != NULL) {
-        App *temp = head;
+        Process *temp = head;
         head = head->next;
         free(temp);
     }

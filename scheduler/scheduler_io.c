@@ -32,7 +32,7 @@ typedef struct app {
 Process *head = NULL;
 
 // Reads the applications from the file and stores them in the list
-void readProcesssFromFile(char *filename) {
+void readProcessFromFile(char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         perror("Error opening file");
@@ -54,6 +54,8 @@ void readProcesssFromFile(char *filename) {
         newProcess->entryTime = entryTime;
         newProcess->next = NULL;
         newProcess->prev = last;
+        newProcess->waitingForIO = 0;
+        newProcess->completedIO = 0;
         if (last != NULL) {
             last->next = newProcess;
         } else {
@@ -83,6 +85,7 @@ void startProcess(Process *app) {
 
 // Signal handler for SIGUSR1
 void sigusr1Handler(int sig) {
+    printf("Received SIGUSR1\n");
     Process *current = head;
     while (current != NULL) {
         if (current->state == RUNNING) {
@@ -96,6 +99,7 @@ void sigusr1Handler(int sig) {
 
 // Signal handler for SIGUSR2
 void sigusr2Handler(int sig) {
+    printf("Received SIGUSR2\n");
     Process *current = head;
     while (current != NULL) {
         if (current->waitingForIO) {
@@ -110,9 +114,9 @@ void sigusr2Handler(int sig) {
 
 // Signal handler for SIGCHLD
 void sigchldHandler(int sig) {
+    printf("Received SIGCHLD\n");
     int status;
     pid_t pid;
-
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         Process *current = head;
         while (current != NULL) {
@@ -125,30 +129,61 @@ void sigchldHandler(int sig) {
     }
 }
 
-// Implementation of the FCFS scheduling
+// Implementation of the FCFS scheduling with refined logic
 void scheduleFCFS(Process *head) {
     Process *current = head;
+    int status;
+
     while (current != NULL) {
+        // Start the process if it's new
         if (current->state == NEW) {
             startProcess(current);
         }
 
+        // Wait for the process to change state (complete, stop for I/O, or exit)
         if (current->state == RUNNING || current->state == READY_TO_RUN) {
-            waitpid(current->pid, NULL, 0); // Wait for the application to finish or stop for I/O
-            if (current->waitingForIO) {
+            pid_t result = waitpid(current->pid, &status, WUNTRACED);
+
+            if (result == -1) {
+                perror("waitpid failed");
+                exit(EXIT_FAILURE);
+            }
+
+            if (WIFEXITED(status)) {
+                // Process has exited
+                current->state = EXITED;
+                printf("Process %s exited\n", current->name);
+            } else if (WIFSTOPPED(status)) {
+                // Process stopped for I/O
                 current->state = WAITING_FOR_IO;
-                // Wait for I/O to complete
-                while (!current->completedIO) {
-                    // Spin or sleep
-                }
-                current->state = READY_TO_RUN;
+                printf("Process %s waiting for I/O\n", current->name);
+            } else if (WIFCONTINUED(status)) {
+                // Process continued after I/O completion
+                current->state = RUNNING;
             }
         }
 
-        if (current->state == EXITED) {
-            current = current->next;
+        // If the process is waiting for I/O and the I/O is completed
+        if (current->state == WAITING_FOR_IO && current->completedIO) {
+            current->completedIO = 0; // Reset I/O completion flag
+            kill(current->pid, SIGCONT); // Continue the process
+            current->state = RUNNING; // Update state to RUNNING
         }
+
+        // Move to the next process
+        current = current->next;
     }
+}
+
+int isAllStopped(Process *head) {
+    Process *current = head;
+    while (current != NULL) {
+        if (current->state != EXITED) {
+            return 0;
+        }
+        current = current->next;
+    }
+    return 1;
 }
 
 // Implementation of the RR scheduling
@@ -158,7 +193,6 @@ void scheduleRR(Process *head, int quantum) {
     ts.tv_nsec = (quantum % 1000) * 1000000L;
 
     while (1) {
-        int allExited = 1;
         Process *current = head;
 
         while (current != NULL) {
@@ -168,6 +202,10 @@ void scheduleRR(Process *head, int quantum) {
 
             if (current->state == RUNNING || current->state == READY_TO_RUN) {
                 nanosleep(&ts, NULL);
+                if (current->state == EXITED) {
+                    current = current->next;
+                    continue;
+                }
                 kill(current->pid, SIGSTOP);
                 current->state = STOPPED;
             }
@@ -180,20 +218,11 @@ void scheduleRR(Process *head, int quantum) {
                 current->state = RUNNING;
             }
 
-            // Check if the process has exited
-            if (waitpid(current->pid, NULL, WNOHANG) > 0) {
-                current->state = EXITED;
-            }
-
-            if (current->state != EXITED) {
-                allExited = 0;
-            }
-
             current = current->next;
         }
 
-        if (allExited) {
-            break; // All processes have exited
+        if (isAllStopped(head)) {
+            break;
         }
     }
 }
@@ -234,9 +263,9 @@ signal(SIGCHLD, sigchldHandler);
             return 1;
         }
         quantum = atoi(argv[2]);
-        readProcesssFromFile(argv[3]);
+        readProcessFromFile(argv[3]);
     } else {
-        readProcesssFromFile(argv[2]);
+        readProcessFromFile(argv[2]);
     }
 
     if (strcmp(policy, "FCFS") == 0) {
