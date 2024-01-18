@@ -1,0 +1,165 @@
+gcc -Wall  -lm  scheduler.c   -o scheduler
+gcc -Wall  -lm  scheduler_io.c   -o scheduler_io
+**Running FCFS homogeneous.txt**
+process 69637 begins
+process 69637 ends
+PID 69637 - CMD: ../work/work7
+	Elapsed Time: 2.47 s
+	Workload Time: 2.47 s
+process 69638 begins
+process 69638 ends
+PID 69638 - CMD: ../work/work7
+	Elapsed Time: 2.47 s
+	Workload Time: 2.47 s
+process 69640 begins
+process 69640 ends
+PID 69640 - CMD: ../work/work7
+	Elapsed Time: 2.47 s
+	Workload Time: 2.47 s
+process 69641 begins
+process 69641 ends
+PID 69641 - CMD: ../work/work7
+	Elapsed Time: 2.46 s
+	Workload Time: 2.46 s
+process 69726 begins
+process 69726 ends
+PID 69726 - CMD: ../work/work7
+	Elapsed Time: 2.47 s
+	Workload Time: 2.47 s
+**Running RR homogeneous.txt**
+process 69743 begins
+process 69746 begins
+process 69747 begins
+process 69750 begins
+process 69747 ends
+PID 69747 - CMD: ../work/work7
+	Elapsed Time: 3.47 s
+	Workload Time: 2.47 s
+process 69759 begins
+process 69743 ends
+PID 69743 - CMD: ../work/work7
+	Elapsed Time: 8.93 s
+	Workload Time: 2.46 s
+process 69759 ends
+PID 69759 - CMD: ../work/work7
+	Elapsed Time: 7.41 s
+	Workload Time: 2.47 s
+process 69746 ends
+PID 69746 - CMD: ../work/work7
+	Elapsed Time: 10.88 s
+	Workload Time: 2.47 s
+process 69750 ends
+PID 69750 - CMD: ../work/work7
+	Elapsed Time: 9.34 s
+	Workload Time: 2.46 s
+**Running FCFS reverse.txt**
+process 69807 begins
+process 69807 ends
+PID 69807 - CMD: ../work/work7
+	Elapsed Time: 2.46 s
+	Workload Time: 2.46 s
+process 69812 begins
+process 69812 ends
+PID 69812 - CMD: ../work/work6
+	Elapsed Time: 2.11 s
+	Workload Time: 2.11 s
+process 69902 begins
+process 69902 ends
+PID 69902 - CMD: ../work/work5
+	Elapsed Time: 1.76 s
+	Workload Time: 1.76 s
+process 69903 begins
+process 69903 ends
+PID 69903 - CMD: ../work/work4
+	Elapsed Time: 1.41 s
+	Workload Time: 1.41 s
+process 69906 begins
+process 69906 ends
+PID 69906 - CMD: ../work/work3
+	Elapsed Time: 1.06 s
+	Workload Time: 1.06 s
+process 69928 begins
+process 69928 ends
+PID 69928 - CMD: ../work/work2
+	Elapsed Time: 0.71 s
+	Workload Time: 0.71 s
+process 69930 begins
+process 69930 ends
+PID 69930 - CMD: ../work/work1
+	Elapsed Time: 0.35 s
+	Workload Time: 0.35 s
+**Running RR reverse.txt**
+process 69954 begins
+process 69955 begins
+process 69956 begins
+process 69959 begins
+process 69982 begins
+process 69983 begins
+process 69983 ends
+PID 69983 - CMD: ../work/work2
+	Elapsed Time: 0.70 s
+	Workload Time: 0.70 s
+process 69986 begins
+process 69986 ends
+PID 69986 - CMD: ../work/work1
+	Elapsed Time: 0.35 s
+	Workload Time: 0.35 s
+process 69956 ends
+PID 69956 - CMD: ../work/work5
+	Elapsed Time: 4.82 s
+	Workload Time: 1.77 s
+process 69982 ends
+PID 69982 - CMD: ../work/work3
+	Elapsed Time: 2.88 s
+	Workload Time: 1.05 s
+process 69959 ends
+PID 69959 - CMD: ../work/work4
+	Elapsed Time: 4.28 s
+	Workload Time: 1.41 s
+process 69955 ends
+PID 69955 - CMD: ../work/work6
+	Elapsed Time: 7.40 s
+	Workload Time: 2.11 s
+process 69954 ends
+PID 69954 - CMD: ../work/work7
+	Elapsed Time: 9.86 s
+	Workload Time: 2.46 s
+**Running FCFS mixed.txt**
+process 70025 begins
+process 70025 starts io
+process 70025 completed io
+PID 70025 - CMD: ../work/work5x2_io
+	Elapsed Time: 4.76 s
+	Workload Time: 4.76 s
+process 70026 begins
+process 70025 ends
+PID 70025 - CMD: ../work/work5x2_io
+	Elapsed Time: 6.52 s
+	Workload Time: 6.52 s
+process 70026 ends
+PID 70026 - CMD: ../work/work7
+	Elapsed Time: 2.46 s
+	Workload Time: 2.46 s
+process 70033 begins
+process 70033 ends
+PID 70033 - CMD: ../work/work6
+	Elapsed Time: 2.11 s
+	Workload Time: 2.11 s
+**Running RR mixed.txt**
+process 70118 begins
+process 70120 begins
+process 70119 begins
+process 70118 starts io
+process 70118 completed io
+process 70120 ends
+PID 70120 - CMD: ../work/work6
+	Elapsed Time: 8.87 s
+	Workload Time: 2.11 s
+process 70119 ends
+PID 70119 - CMD: ../work/work7
+	Elapsed Time: 9.33 s
+	Workload Time: 2.46 s
+process 70118 ends
+PID 70118 - CMD: ../work/work5x2_io
+	Elapsed Time: 11.09 s
+	Workload Time: 6.51 s
