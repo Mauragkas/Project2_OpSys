@@ -17,21 +17,29 @@ typedef enum {
 	EXITED 
 } ProcessState;
 
-typedef struct app {
+typedef struct timer {
+    struct timespec tmp;
+    struct timespec start;
+    float elapsed;
+    float work;
+} Timer;
+
+typedef struct Process {
     char name[MAX_LENGTH];
     int pid;
     ProcessState state;
     int entryTime;
-    struct app *next;
-    struct app *prev;
+    struct Process *next;
+    struct Process *prev;
     int waitingForIO;
     int completedIO;
+    Timer timer;
 } Process;
 
 // Global head pointer for accessing the list in the signal handler
 Process *head = NULL;
 
-// Reads the applications from the file and stores them in the list
+// Reads the Processlications from the file and stores them in the list
 void readProcessFromFile(char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
@@ -39,16 +47,16 @@ void readProcessFromFile(char *filename) {
         exit(EXIT_FAILURE);
     }
 
-    char appName[MAX_LENGTH];
+    char ProcessName[MAX_LENGTH];
     int entryTime;
     Process *last = NULL;
-    while (fscanf(file, "%s %d", appName, &entryTime) != EOF) {
+    while (fscanf(file, "%s %d", ProcessName, &entryTime) != EOF) {
         Process *newProcess = (Process *)malloc(sizeof(Process));
         if (newProcess == NULL) {
-            perror("Failed to allocate memory for new app");
+            perror("Failed to allocate memory for new Process");
             exit(EXIT_FAILURE);
         }
-        strncpy(newProcess->name, appName, MAX_LENGTH);
+        strncpy(newProcess->name, ProcessName, MAX_LENGTH);
         newProcess->pid = -1;
         newProcess->state = NEW;
         newProcess->entryTime = entryTime;
@@ -67,16 +75,22 @@ void readProcessFromFile(char *filename) {
     fclose(file);
 }
 
-// Start an application
-void startProcess(Process *app) {
+void printProcess(Process *current) {
+    printf("PID %d - CMD: %s\n\tElapsed Time: %.2f s\n\tWorkload Time: %.2f s\n", 
+            current->pid, current->name, (double)current->timer.elapsed / 1000, (double)current->timer.work / 1000);
+}
+
+// Start an Processlication
+void startProcess(Process *Process) {
     pid_t pid = fork();
     if (pid == 0) { // child
-        execl(app->name, app->name, NULL);
-        perror("Failed to start app");
+        execl(Process->name, Process->name, NULL);
+        perror("Failed to start Process");
         exit(EXIT_FAILURE);
     } else if (pid > 0) { // parent
-        app->pid = pid;
-        app->state = RUNNING;
+        Process->pid = pid;
+        Process->state = RUNNING;
+        clock_gettime(CLOCK_MONOTONIC, &Process->timer.start);
     } else {
         perror("fork failed");
         exit(EXIT_FAILURE);
@@ -114,14 +128,21 @@ void sigusr2Handler(int sig) {
 
 // Signal handler for SIGCHLD
 void sigchldHandler(int sig) {
-    // printf("Received SIGCHLD\n");
     int status;
     pid_t pid;
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         Process *current = head;
         while (current != NULL) {
             if (current->pid == pid) {
+                struct timespec now;
+                clock_gettime(CLOCK_MONOTONIC, &now);
+                current->timer.elapsed = (now.tv_sec - current->timer.start.tv_sec) * 1000 + 
+                        (now.tv_nsec - current->timer.start.tv_nsec) / 1000000.0;
+                current->timer.work += (now.tv_sec - current->timer.tmp.tv_sec) * 1000 + 
+                        (now.tv_nsec - current->timer.tmp.tv_nsec) / 1000000.0;
                 current->state = EXITED;
+
+                printProcess(current);
                 break;
             }
             current = current->next;
@@ -171,6 +192,15 @@ void scheduleFCFS(Process *head) {
         }
 
         // Move to the next process
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        current->timer.elapsed = (now.tv_sec - current->timer.start.tv_sec) * 1000 + 
+                (now.tv_nsec - current->timer.start.tv_nsec) / 1000000.0;
+        current->timer.work += current->timer.elapsed;
+        current->timer.tmp = now;
+
+        printProcess(current);
+
         current = current->next;
     }
 }
@@ -192,33 +222,40 @@ void scheduleRR(Process *head, int quantum) {
     ts.tv_sec = quantum / 1000;
     ts.tv_nsec = (quantum % 1000) * 1000000L;
 
-    while (1) {
+    while (!isAllStopped(head)) {
         Process *current = head;
 
         while (current != NULL) {
             if (current->state == NEW) {
                 startProcess(current);
-            } else if (current->state == RUNNING || current->state == READY_TO_RUN) {
+                kill(current->pid, SIGSTOP);
+                current->state = STOPPED;
+            } else if (current->state == STOPPED) {
+                kill(current->pid, SIGCONT);
+                struct timespec now;
+                clock_gettime(CLOCK_MONOTONIC, &now);
+                current->timer.tmp = now;
+                current->state = RUNNING;
+            }
+
+            if (current->state == RUNNING || current->state == READY_TO_RUN) {
                 nanosleep(&ts, NULL);
                 if (current->state == EXITED) {
                     current = current->next;
                     continue;
                 }
                 kill(current->pid, SIGSTOP);
+                struct timespec now;
+                clock_gettime(CLOCK_MONOTONIC, &now);
+                current->timer.work += (now.tv_sec - current->timer.tmp.tv_sec) * 1000 + 
+                        (now.tv_nsec - current->timer.tmp.tv_nsec) / 1000000.0;
                 current->state = STOPPED;
             } else if (current->state == WAITING_FOR_IO && current->completedIO) {
                 current->state = READY_TO_RUN;
                 current->completedIO = 0;
-            } else if (current->state == STOPPED) {
-                kill(current->pid, SIGCONT);
-                current->state = RUNNING;
             }
 
             current = current->next;
-        }
-
-        if (isAllStopped(head)) {
-            break;
         }
     }
 }

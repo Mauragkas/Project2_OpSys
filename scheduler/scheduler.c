@@ -15,6 +15,13 @@ typedef enum {
     EXITED 
 } ProcessState;
 
+typedef struct timer {
+    struct timespec tmp;
+    struct timespec start;
+    float elapsed;
+    float work;
+} Timer;
+
 typedef struct Process {
     char name[MAX_LENGTH];
     int pid;
@@ -22,6 +29,7 @@ typedef struct Process {
     int entryTime;
     struct Process *next;
     struct Process *prev;
+    Timer timer;
 } Process;
 
 // Global head pointer for accessing the list in the signal handler
@@ -61,6 +69,11 @@ void readProcessFromFile(char *filename) {
     fclose(file);
 }
 
+void printProcess(Process *current) {
+    printf("PID %d - CMD: %s\n\tElapsed Time: %.2f s\n\tWorkload Time: %.2f s\n", 
+            current->pid, current->name, (double)current->timer.elapsed / 1000, (double)current->timer.work / 1000);
+}
+
 // Signal handler for SIGCHLD
 void sigchldHandler(int sig) {
     int status;
@@ -69,8 +82,15 @@ void sigchldHandler(int sig) {
         Process *current = head;
         while (current != NULL) {
             if (current->pid == pid) {
+                struct timespec now;
+                clock_gettime(CLOCK_MONOTONIC, &now);
+                current->timer.elapsed = (now.tv_sec - current->timer.start.tv_sec) * 1000 + 
+                        (now.tv_nsec - current->timer.start.tv_nsec) / 1000000.0;
+                current->timer.work += (now.tv_sec - current->timer.tmp.tv_sec) * 1000 + 
+                        (now.tv_nsec - current->timer.tmp.tv_nsec) / 1000000.0;
                 current->state = EXITED;
-                // printf("%d exited with state %d\n", current->pid, current->state);
+
+                printProcess(current);
                 break;
             }
             current = current->next;
@@ -88,20 +108,10 @@ void startProcess(Process *Process) {
     } else if (pid > 0) { // parent
         Process->pid = pid;
         Process->state = RUNNING;
+        clock_gettime(CLOCK_MONOTONIC, &Process->timer.start);
     } else {
         perror("fork failed");
         exit(EXIT_FAILURE);
-    }
-}
-
-// Implementation of the FCFS scheduling
-void scheduleFCFS(Process *head) {
-    Process *current = head;
-    while (current != NULL) {
-        startProcess(current);
-        waitpid(current->pid, NULL, 0); // Wait for the Processlication to finish
-        current->state = EXITED;
-        current = current->next;
     }
 }
 
@@ -116,36 +126,64 @@ int isAllStopped(Process *head) {
     return 1;
 }
 
+// Implementation of the FCFS scheduling
+void scheduleFCFS(Process *head) {
+    Process *current = head;
+    while (!isAllStopped(head)) {
+        startProcess(current);
+        waitpid(current->pid, NULL, 0); // Wait for the Processlication to finish
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        current->timer.elapsed = (now.tv_sec - current->timer.start.tv_sec) * 1000 + 
+                (now.tv_nsec - current->timer.start.tv_nsec) / 1000000.0;
+        current->timer.work = current->timer.elapsed;
+
+        printProcess(current);
+
+        current->state = EXITED;
+        current = current->next;
+    }
+}
+
 // Implementation of the RR scheduling
 void scheduleRR(Process *head, int quantum) {
     struct timespec ts;
     ts.tv_sec = quantum / 1000;
     ts.tv_nsec = (quantum % 1000) * 1000000L;
 
-    while (1) {
+    
+    while (!isAllStopped(head)) {
         Process *current = head;
 
         while (current != NULL) {
             if (current->state == NEW) {
                 startProcess(current);
-            } else if (current->state == RUNNING) {
+                kill(current->pid, SIGSTOP);
+                current->state = STOPPED;
+                continue;
+            } else if (current->state == STOPPED) {
+                kill(current->pid, SIGCONT);
+                struct timespec now;
+                clock_gettime(CLOCK_MONOTONIC, &now);
+                current->timer.tmp = now;
+                current->state = RUNNING;
+            }
+
+            if (current->state == RUNNING) {
                 nanosleep(&ts, NULL);
                 if (current->state == EXITED) {
                     current = current->next;
                     continue;
                 }
                 kill(current->pid, SIGSTOP);
+                struct timespec now;
+                clock_gettime(CLOCK_MONOTONIC, &now);
+                current->timer.work += (now.tv_sec - current->timer.tmp.tv_sec) * 1000 + 
+                        (now.tv_nsec - current->timer.tmp.tv_nsec) / 1000000.0;
                 current->state = STOPPED;
-            } else if (current->state == STOPPED) {
-                kill(current->pid, SIGCONT);
-                current->state = RUNNING;
             }
 
             current = current->next;
-        }
-
-        if (isAllStopped(head)) {
-            break;
         }
     }
 }
@@ -174,10 +212,11 @@ int main(int argc, char *argv[]) {
         readProcessFromFile(argv[2]);
     }
 
+    signal(SIGCHLD, sigchldHandler);
+    
     if (strcmp(policy, "FCFS") == 0) {
         scheduleFCFS(head);
     } else if (strcmp(policy, "RR") == 0) {
-        signal(SIGCHLD, sigchldHandler);
         scheduleRR(head, quantum);
     } else {
         printf("Invalid scheduling policy.\n");
