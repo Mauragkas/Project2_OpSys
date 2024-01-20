@@ -26,7 +26,6 @@ typedef struct Process {
     char name[MAX_LENGTH];
     int pid;
     ProcessState state;
-    int entryTime;
     struct Process *next;
     struct Process *prev;
     Timer timer;
@@ -44,9 +43,8 @@ void readProcessFromFile(char *filename) {
     }
 
     char ProcessName[MAX_LENGTH];
-    int entryTime;
     Process *last = NULL;
-    while (fscanf(file, "%s %d", ProcessName, &entryTime) != EOF) {
+    while (fscanf(file, "%s", ProcessName) != EOF) {
         Process *newProcess = (Process *)malloc(sizeof(Process));
         if (newProcess == NULL) {
             perror("Failed to allocate memory for new Process");
@@ -55,7 +53,6 @@ void readProcessFromFile(char *filename) {
         strncpy(newProcess->name, ProcessName, MAX_LENGTH);
         newProcess->pid = -1;
         newProcess->state = NEW;
-        newProcess->entryTime = entryTime;
         newProcess->next = NULL;
         newProcess->prev = last;
         if (last != NULL) {
